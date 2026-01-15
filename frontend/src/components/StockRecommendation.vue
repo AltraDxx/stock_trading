@@ -11,6 +11,13 @@ interface PositionStrategy {
   max_pct: number
 }
 
+interface SellCriteria {
+  min_loss_pct?: number
+  max_score_threshold?: number
+  bad_sectors?: string[]
+  reason?: string
+}
+
 interface StockRecommendation {
   rank: number
   ts_code: string
@@ -29,6 +36,8 @@ interface StockRecommendation {
   entry_timing: string
   reasons: string[]
   risk_factors: string[]
+  sell_criteria?: SellCriteria // 新增：智能卖出标准
+  replacement_advice?: string
 }
 
 const props = defineProps<{
@@ -37,6 +46,7 @@ const props = defineProps<{
 
 // 持仓数据
 const availableCapital = ref(0)
+const positions = ref<any[]>([])
 
 onMounted(() => {
   // 从 localStorage 读取持仓
@@ -49,27 +59,91 @@ onMounted(() => {
         return sum + pos.quantity * pos.cost_price
       }, 0)
       availableCapital.value = totalCapital - marketValue
+      positions.value = portfolio.positions || []
     } catch (e) {
       console.error('读取持仓失败')
     }
   }
 })
 
-// 计算建议买入股数
-const suggestedShares = computed(() => {
+// 计算建议买入股数或换仓建议
+const tradeSuggestion = computed(() => {
   const positionPct = props.stock.position_strategy?.initial_pct || props.stock.position_pct || 20
   const buyPrice = props.stock.buy_price || props.stock.current_price
-  if (!buyPrice || buyPrice <= 0 || availableCapital.value <= 0) return 0
   
-  // 可用资金 × 仓位比例 ÷ 买入价 ÷ 100 × 100（取整）
-  const rawShares = (availableCapital.value * positionPct / 100) / buyPrice
-  return Math.floor(rawShares / 100) * 100
-})
+  if (!buyPrice || buyPrice <= 0) return { type: 'hold', message: '价格数据无效', shares: 0 }
 
-// 计算建议买入金额
-const suggestedAmount = computed(() => {
-  const buyPrice = props.stock.buy_price || props.stock.current_price
-  return suggestedShares.value * (buyPrice || 0)
+  // 1. 资金充足情况：计算可买股数
+  const budgetForStock = availableCapital.value * (positionPct / 100)
+  const minCost = buyPrice * 100
+  
+  // 如果可用资金足够买入一手，优先建议买入
+  if (budgetForStock >= minCost) {
+    const rawShares = Math.floor(budgetForStock / buyPrice / 100) * 100
+    const amount = rawShares * buyPrice
+    return {
+      type: 'buy',
+      shares: rawShares,
+      amount: amount,
+      message: `建议买入 ${rawShares} 股`
+    }
+  } 
+  
+  // 2. 资金不足情况：智能匹配换仓
+  if (props.stock.sell_criteria && positions.value.length > 0) {
+    const criteria = props.stock.sell_criteria
+    const candidates = []
+
+    for (const pos of positions.value) {
+      // 计算亏损比例
+      let lossPct = 0
+      if (pos.current_price && pos.cost_price > 0) {
+        lossPct = (pos.cost_price - pos.current_price) / pos.cost_price * 100
+      }
+      
+      // 匹配条件 1: 亏损超过阈值
+      if (criteria.min_loss_pct && lossPct >= criteria.min_loss_pct) {
+        candidates.push({ name: pos.name, reason: `亏损 ${lossPct.toFixed(1)}%` })
+        continue
+      }
+      
+      // 匹配条件 2: 属于不良板块 (简单关键词匹配)
+      if (criteria.bad_sectors && criteria.bad_sectors.length > 0) {
+        for (const bad of criteria.bad_sectors) {
+          // 这里假设 name 或 ts_code 无法直接判断板块，暂且略过，或者以后端返回为准
+          // 如果前端有板块字段可以使用
+        }
+      }
+    }
+    
+    // 如果找到了合适的卖出标的
+    if (candidates.length > 0) {
+      // 取第一个
+      const target = candidates[0]
+      return {
+        type: 'smart_replace',
+        targetName: target.name,
+        targetReason: target.reason,
+        reason: criteria.reason || '优化持仓结构',
+        message: `建议卖出 ${target.name}`
+      }
+    }
+  }
+  
+  // 3. 兜底：显示通用建议
+  if (props.stock.replacement_advice) {
+    return {
+      type: 'replace',
+      message: props.stock.replacement_advice,
+      shares: 0
+    }
+  }
+  
+  return {
+    type: 'replace',
+    message: '可用资金不足，建议调仓买入',
+    shares: 0
+  }
 })
 
 function getSignalClass(signal: string) {
@@ -87,439 +161,404 @@ function getScoreColor(score: number) {
 
 <template>
   <div class="stock-card">
-    <!-- 头部：排名和基本信息 -->
+    <!-- Headers & Score (Keep Existing) -->
     <div class="card-header">
-      <div class="rank-badge">{{ stock.rank }}</div>
-      <div class="stock-info">
-        <div class="stock-name">{{ stock.name }}</div>
-        <div class="stock-code">{{ stock.ts_code }} · {{ stock.sector }}</div>
-      </div>
-      <div class="signal-badge" :class="getSignalClass(stock.signal)">
-        {{ stock.signal }}
-      </div>
-    </div>
-
-    <!-- 评分进度条 -->
-    <div class="score-section">
-      <div class="score-label">
-        <span>推荐强度</span>
-        <span class="score-value" :style="{ color: getScoreColor(stock.score) }">
-          {{ stock.score }}分
-        </span>
-      </div>
-      <div class="score-bar">
-        <div 
-          class="score-fill" 
-          :style="{ 
-            width: `${stock.score}%`,
-            background: getScoreColor(stock.score)
-          }"
-        ></div>
-      </div>
-    </div>
-
-    <!-- 价格信息表格 -->
-    <div class="price-table">
-      <div class="price-row">
-        <span class="price-label">当前价</span>
-        <span class="price-value current">¥{{ stock.current_price?.toFixed(2) || 'N/A' }}</span>
-      </div>
-      <div class="price-row">
-        <span class="price-label">建议买入</span>
-        <span class="price-value buy">¥{{ (stock.buy_price || stock.current_price)?.toFixed(2) || 'N/A' }}</span>
-      </div>
-      <div class="price-row">
-        <span class="price-label">目标卖出</span>
-        <span class="price-value target">¥{{ (stock.sell_price || stock.target_price)?.toFixed(2) || 'N/A' }}</span>
-      </div>
-      <div class="price-row">
-        <span class="price-label">止损价</span>
-        <span class="price-value stoploss">¥{{ stock.stop_loss_price?.toFixed(2) || 'N/A' }}</span>
-      </div>
-    </div>
-
-    <!-- 仓位策略 -->
-    <div class="position-section">
-      <div class="position-title">📊 仓位策略</div>
-      <template v-if="stock.position_strategy">
-        <div class="position-detail">
-          <span class="position-label">底仓</span>
-          <div class="position-right">
-            <span class="position-value">{{ stock.position_strategy.initial_pct }}%</span>
-            <span v-if="suggestedShares > 0" class="shares-inline">
-              → {{ suggestedShares }} 股（约¥{{ suggestedAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0}) }}）
-            </span>
+      <div class="header-left">
+        <div class="rank-badge">{{ stock.rank }}</div>
+        <div class="stock-main">
+          <div class="stock-name-row">
+            <span class="stock-name">{{ stock.name }}</span>
+            <span class="stock-code">{{ stock.ts_code }}</span>
           </div>
+          <div class="stock-sub">{{ stock.sector }}</div>
         </div>
-        <div class="position-condition">
-          {{ stock.position_strategy.add_condition }}
+      </div>
+      <div class="header-right">
+        <div class="signal-badge" :class="getSignalClass(stock.signal)">
+          {{ stock.signal }}
         </div>
-        <div class="position-detail">
-          <span class="position-label">最大仓位</span>
-          <span class="position-value">{{ stock.position_strategy.max_pct }}%</span>
+      </div>
+    </div>
+
+    <!-- 评分条 -->
+    <div class="score-line">
+      <div class="score-meta">
+        <span class="score-label">推荐评分</span>
+        <span class="score-num" :style="{ color: getScoreColor(stock.score) }">{{ stock.score }}</span>
+      </div>
+      <div class="score-track">
+        <div class="score-bar" 
+             :style="{ 
+               width: `${stock.score}%`, 
+               backgroundColor: getScoreColor(stock.score) 
+             }">
         </div>
-      </template>
-      <template v-else>
-        <div class="position-detail">
-          <span class="position-label">建议仓位</span>
-          <div class="position-right">
-            <span class="position-value">{{ stock.position_pct || 20 }}%</span>
-            <span v-if="suggestedShares > 0" class="shares-inline">
-              → {{ suggestedShares }} 股（约¥{{ suggestedAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0}) }}）
-            </span>
-          </div>
-        </div>
-      </template>
+      </div>
+    </div>
+
+    <!-- 价格网格 -->
+    <div class="price-grid">
+      <div class="price-item">
+        <span class="label">当前价</span>
+        <span class="value main">¥{{ stock.current_price?.toFixed(2) }}</span>
+      </div>
+      <div class="price-item">
+        <span class="label">建议买入</span>
+        <span class="value buy">¥{{ (stock.buy_price || stock.current_price)?.toFixed(2) }}</span>
+      </div>
+      <div class="price-item">
+        <span class="label">目标价</span>
+        <span class="value target">¥{{ (stock.sell_price || stock.target_price)?.toFixed(2) }}</span>
+      </div>
+      <div class="price-item">
+        <span class="label">止损价</span>
+        <span class="value stop">¥{{ stock.stop_loss_price?.toFixed(2) }}</span>
+      </div>
+    </div>
+
+    <!-- 交易行动建议 (Action Box) -->
+    <div class="action-box">
+      <div class="action-header">
+        <span class="icon-dot"></span>
+        <span class="action-title">交易建议</span>
+      </div>
       
-      <div class="hold-period">
-        <span class="position-label">持仓周期</span>
-        <span class="position-value">{{ stock.hold_period }}</span>
+      <!-- 场景A：建议买入 -->
+      <div v-if="tradeSuggestion.type === 'buy'" class="action-content buy-mode">
+        <div class="suggestion-main">
+          建议买入 <span class="highlight">{{ tradeSuggestion.shares }}</span> 股
+        </div>
+        <div class="suggestion-sub">
+          预计金额 ¥{{ tradeSuggestion.amount?.toLocaleString() }} | 建议仓位 <span class="highlight">{{ stock.position_strategy?.initial_pct || 20 }}%</span>
+        </div>
+      </div>
+
+      <!-- 场景B：智能换仓 (NEW) -->
+      <div v-else-if="tradeSuggestion.type === 'smart_replace'" class="action-content replace-mode">
+        <div class="suggestion-main text-warning">
+          建议卖出 <span class="highlight-sell">{{ tradeSuggestion.targetName }}</span>
+        </div>
+        <div class="suggestion-sub">
+          原因: {{ tradeSuggestion.targetReason }} ({{ tradeSuggestion.reason }})
+        </div>
+        <div class="suggestion-arrow">
+           ↓ 调仓买入本股
+        </div>
+      </div>
+
+      <!-- 场景C：通用换仓 -->
+      <div v-else class="action-content replace-mode">
+        <div class="suggestion-main text-warning">
+          建议调仓
+        </div>
+        <div class="suggestion-desc">
+          {{ tradeSuggestion.message }}
+        </div>
+      </div>
+      
+      <div class="strategy-mini" v-if="stock.position_strategy">
+        <div class="mini-row">
+          <span>策略: {{ stock.position_strategy.add_condition }}</span>
+        </div>
       </div>
     </div>
 
-    <!-- 买入时机 -->
-    <div class="timing-section">
-      <div class="timing-label">⏰ 买入时机</div>
-      <div class="timing-text">{{ stock.entry_timing }}</div>
-    </div>
-
-    <!-- 推荐理由 -->
-    <div class="reasons-section">
-      <div class="section-title">📊 推荐理由</div>
-      <ul class="reason-list">
-        <li v-for="(reason, index) in stock.reasons" :key="index">
-          {{ reason }}
-        </li>
-      </ul>
-    </div>
-
-    <!-- 风险因素 -->
-    <div class="risks-section">
-      <div class="section-title">⚠️ 风险提示</div>
-      <ul class="risk-list">
-        <li v-for="(risk, index) in stock.risk_factors" :key="index">
-          {{ risk }}
-        </li>
-      </ul>
+    <!-- 逻辑与风险 -->
+    <div class="analysis-grid">
+      <div class="analysis-col">
+        <div class="col-title">推荐逻辑</div>
+        <ul class="bullet-list">
+          <li v-for="(r, i) in stock.reasons" :key="i">{{ r }}</li>
+        </ul>
+      </div>
+      <div class="analysis-col">
+        <div class="col-title">风险因素</div>
+        <ul class="bullet-list risk">
+          <li v-for="(r, i) in stock.risk_factors" :key="i">{{ r }}</li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 保持原有样式，新增 highlight-sell */
 .stock-card {
-  background: var(--bg-secondary, #1e1e2e);
-  border: 1px solid var(--border-color, #333);
-  border-radius: 16px;
-  padding: 20px;
-  transition: all 0.2s ease;
+  background: linear-gradient(145deg, rgba(30, 30, 46, 0.9), rgba(20, 20, 35, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
 .stock-card:hover {
-  border-color: var(--primary-color, #8b5cf6);
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.4);
 }
 
 .card-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .rank-badge {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
-  border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-weight: 700;
+  font-size: 12px;
   color: white;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
 }
 
-.stock-info {
-  flex: 1;
+.stock-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .stock-name {
   font-weight: 600;
-  font-size: 1.2rem;
-  color: var(--text-primary, #fff);
+  font-size: 15px;
+  color: #fff;
 }
 
 .stock-code {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #888);
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.stock-sub {
+  font-size: 11px;
+  color: #64748b;
 }
 
 .signal-badge {
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
-  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
 }
 
 .signal-buy {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-  border: 1px solid #22c55e;
-}
-
-.signal-hold {
-  background: rgba(234, 179, 8, 0.2);
-  color: #eab308;
-  border: 1px solid #eab308;
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.2);
 }
 
 .signal-sell {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.2);
 }
 
-.score-section {
-  margin-bottom: 16px;
+.signal-hold {
+  background: rgba(234, 179, 8, 0.1);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.2);
 }
 
-.score-label {
+.score-line {
+  margin-bottom: 14px;
+}
+
+.score-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
-  margin-bottom: 6px;
-  color: var(--text-secondary, #888);
+  font-size: 11px;
+  margin-bottom: 4px;
+  color: #94a3b8;
 }
 
-.score-value {
-  font-weight: 600;
+.score-num {
+  font-weight: 700;
 }
 
-.score-bar {
-  height: 6px;
-  background: var(--bg-tertiary, #2a2a3e);
-  border-radius: 3px;
+.score-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.score-fill {
+.score-bar {
   height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
+  border-radius: 2px;
 }
 
-.price-table {
+.price-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  background: var(--bg-tertiary, #2a2a3e);
-  padding: 12px;
+  gap: 8px;
+  margin-bottom: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
   border-radius: 8px;
-  margin-bottom: 16px;
 }
 
-.price-value.buy {
-  color: #3b82f6;
-}
-
-.price-row {
+.price-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
-.price-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary, #888);
+.price-item .label {
+  font-size: 10px;
+  color: #64748b;
 }
 
-.price-value {
+.price-item .value {
+  font-size: 13px;
   font-weight: 600;
-  font-size: 1rem;
+  font-family: 'Roboto Mono', monospace;
 }
 
-.price-value.current {
-  color: var(--text-primary, #fff);
-}
+.value.main { color: #f1f5f9; }
+.value.buy { color: #60a5fa; }
+.value.target { color: #4ade80; }
+.value.stop { color: #f87171; }
 
-.price-value.target {
-  color: #22c55e;
-}
-
-.price-value.stoploss {
-  color: #ef4444;
-}
-
-.position-info {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
-}
-
-.info-item {
-  display: flex;
-  gap: 8px;
-}
-
-.info-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #888);
-}
-
-.info-value {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--primary-color, #8b5cf6);
-}
-
-.position-section {
-  background: var(--bg-tertiary, #2a2a3e);
+.action-box {
+  background: rgba(139, 92, 246, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.15);
   border-radius: 8px;
   padding: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
-.position-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-primary, #fff);
+.action-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
-.position-detail {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
+.icon-dot {
+  width: 6px;
+  height: 6px;
+  background: #8b5cf6;
+  border-radius: 50%;
 }
 
-.position-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #888);
-}
-
-.position-value {
-  font-size: 0.85rem;
+.action-title {
+  font-size: 11px;
   font-weight: 600;
-  color: var(--primary-color, #8b5cf6);
+  color: #a78bfa;
+  text-transform: uppercase;
 }
 
-.position-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shares-inline {
-  font-size: 0.8rem;
-  color: #22c55e;
+.suggestion-main {
+  font-size: 14px;
   font-weight: 500;
+  color: #e2e8f0;
+  margin-bottom: 2px;
 }
 
-.position-condition {
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  border-radius: 4px;
-  padding: 8px;
-  margin: 8px 0;
-  font-size: 0.85rem;
-  color: var(--text-primary, #fff);
-}
-
-/* 建议买入股数 */
-.suggested-shares {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), transparent);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: 6px;
-  padding: 10px;
-  margin: 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.shares-label {
-  font-size: 0.85rem;
-  color: #22c55e;
-}
-
-.shares-value {
-  font-size: 1.1rem;
+.suggestion-main .highlight {
+  color: #4ade80;
   font-weight: 700;
-  color: #22c55e;
+  font-size: 16px;
 }
 
-.shares-amount {
-  font-size: 0.8rem;
-  color: var(--text-secondary, #888);
+.suggestion-main .highlight-sell {
+  color: #f87171; /* Red for sell */
+  font-weight: 700;
 }
 
-.hold-period {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  border-top: 1px solid rgba(255,255,255,0.1);
+.suggestion-main.text-warning {
+  color: #facc15;
+}
+
+.suggestion-sub, .suggestion-desc {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.suggestion-arrow {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #4ade80;
+}
+
+.strategy-mini {
   margin-top: 8px;
   padding-top: 8px;
+  border-top: 1px dashed rgba(139, 92, 246, 0.2);
 }
 
-.timing-section {
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 16px;
+.mini-row {
+  font-size: 10px;
+  color: #64748b;
+  margin-bottom: 2px;
 }
 
-.timing-label {
-  font-size: 0.85rem;
-  color: var(--primary-color, #8b5cf6);
-  margin-bottom: 4px;
+.analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
-.timing-text {
-  font-size: 0.9rem;
-  color: var(--text-primary, #fff);
-}
-
-.reasons-section,
-.risks-section {
-  margin-bottom: 12px;
-}
-
-.section-title {
-  font-size: 0.9rem;
+.col-title {
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-primary, #fff);
-  margin-bottom: 8px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  padding-left: 8px;
+  border-left: 2px solid #334155;
 }
 
-.reason-list,
-.risk-list {
-  list-style: none;
+.bullet-list {
   padding: 0;
   margin: 0;
+  list-style: none;
 }
 
-.reason-list li,
-.risk-list li {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #888);
-  padding: 4px 0;
-  padding-left: 16px;
+.bullet-list li {
   position: relative;
+  padding-left: 12px;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 4px;
+  line-height: 1.4;
 }
 
-.reason-list li::before {
-  content: "✓";
+.bullet-list li::before {
+  content: '';
   position: absolute;
   left: 0;
-  color: #22c55e;
+  top: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #475569;
 }
 
-.risk-list li::before {
-  content: "!";
-  position: absolute;
-  left: 0;
-  color: #ef4444;
+.bullet-list.risk li::before {
+  background: #ef4444;
+  opacity: 0.5;
 }
 </style>

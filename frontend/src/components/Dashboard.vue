@@ -92,7 +92,10 @@ async function loadMarketData() {
     const response = await fetch('/api/market/realtime')
     const data = await response.json()
     if (data.success && data.data) {
-      marketIndices.value = data.data
+      // 仅保留主要指数
+      marketIndices.value = data.data.filter((item: MarketIndex) => 
+        ['上证指数', '深证成指', '创业板指'].some(name => item.name.includes(name))
+      )
     }
   } catch (error) {
     console.error('获取实时行情失败:', error)
@@ -106,12 +109,12 @@ onMounted(() => {
   // 首次加载
   loadMarketData()
   
-  // 只在交易时间内每30秒刷新
+  // 只在交易时间内且页面可见时，每30分钟刷新一次
   setInterval(() => {
-    if (isMarketOpen()) {
+    if (isMarketOpen() && !document.hidden) {
       loadMarketData()
     }
-  }, 30000)
+  }, 1800000) // 30分钟
   
   // 加载风险偏好
   const savedRisk = localStorage.getItem('riskPreference')
@@ -309,7 +312,9 @@ function formatMarkdown(text: string): string {
             :class="{ active: activeTab === 'alpha' }"
             @click="activeTab = 'alpha'"
           >
-            <span class="nav-icon">🎯</span>
+            <span class="nav-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+            </span>
             <span class="nav-text">Alpha Predator</span>
             <span class="nav-desc">全市场策略分析</span>
           </button>
@@ -318,7 +323,9 @@ function formatMarkdown(text: string): string {
             :class="{ active: activeTab === 'diagnose' }"
             @click="activeTab = 'diagnose'"
           >
-            <span class="nav-icon">🔬</span>
+            <span class="nav-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </span>
             <span class="nav-text">Deep Dive</span>
             <span class="nav-desc">个股深度诊疗</span>
           </button>
@@ -327,7 +334,9 @@ function formatMarkdown(text: string): string {
             :class="{ active: activeTab === 'portfolio' }"
             @click="activeTab = 'portfolio'"
           >
-            <span class="nav-icon">💼</span>
+            <span class="nav-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+            </span>
             <span class="nav-text">持仓管理</span>
             <span class="nav-desc">管理我的持仓</span>
           </button>
@@ -363,7 +372,10 @@ function formatMarkdown(text: string): string {
       <div v-if="activeTab === 'alpha'" class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">🎯 Alpha Predator</h2>
+            <h2 class="panel-title">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+              Alpha Predator
+            </h2>
             <p class="panel-desc">全市场阿尔法捕获引擎 - 智能策略分析与推送</p>
           </div>
         </div>
@@ -379,7 +391,10 @@ function formatMarkdown(text: string): string {
       <div v-if="activeTab === 'diagnose'" class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">🔬 Deep Dive Diagnostic</h2>
+            <h2 class="panel-title">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="title-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              Deep Dive Diagnostic
+            </h2>
             <p class="panel-desc">个股深度诊疗 - 多维度体检与评级</p>
           </div>
         </div>
@@ -460,7 +475,7 @@ function formatMarkdown(text: string): string {
     <aside class="info-panel">
       <div class="info-section">
         <h3 class="section-title">
-          📈 市场概览
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> 市场概览
           <button v-if="!isLoadingMarket" class="refresh-btn" @click="loadMarketData">🔄</button>
           <span v-else class="loading-spinner-small"></span>
         </h3>
@@ -490,23 +505,7 @@ function formatMarkdown(text: string): string {
         </div>
       </div>
       
-      <div class="info-section">
-        <h3 class="section-title">💡 使用提示</h3>
-        <div class="tips-list">
-          <div class="tip-item">
-            <span class="tip-icon">1️⃣</span>
-            <span>启动 API：<code>uvicorn src.api.main:app --reload</code></span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-icon">2️⃣</span>
-            <span>配置有效的 Gemini API Key</span>
-          </div>
-          <div class="tip-item">
-            <span class="tip-icon">3️⃣</span>
-            <span>确保 Tushare 积分充足</span>
-          </div>
-        </div>
-      </div>
+      <!-- 已移除使用提示 -->
     </aside>
   </div>
 </template>
@@ -572,8 +571,24 @@ function formatMarkdown(text: string): string {
 }
 
 .nav-icon {
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 4px;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.nav-item.active .nav-icon {
+  color: var(--primary-color);
+}
+
+.section-icon {
+  margin-right: 6px;
+  color: var(--primary-color);
+  opacity: 0.8;
 }
 
 .nav-text {
@@ -692,9 +707,20 @@ function formatMarkdown(text: string): string {
 }
 
 .panel-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 8px;
+  background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.title-icon {
+  color: #818cf8; /* Adjust color because text-fill-color transparent hides it if it inherits */
+  -webkit-text-fill-color: initial; /* Reset specific fill for SVG */
 }
 
 .panel-desc {

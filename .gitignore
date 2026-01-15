@@ -45,3 +45,12 @@ frontend/node_modules/
 
 # 外部参考资料
 reference/
+
+# Playwright & Testing
+playwright/
+playwright-report/
+test-results/
+
+# OS Generated
+.DS_Store
+Thumbs.db

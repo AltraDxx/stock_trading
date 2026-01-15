@@ -504,13 +504,16 @@ Shibor 利率:
             logger.info("板块分析完成")
             return result
             
-        except json.JSONDecodeError as e:
-            logger.error(f"解析 LLM 输出失败: {e}")
+        except Exception as e:
+            logger.error(f"板块分析 LLM 处理失败: {e}")
             return {
-                "error": "解析失败",
-                "raw_content": response.content if response else None,
-                "market_summary": "分析结果解析失败，请重试",
+                "market_summary": f"分析生成失败 ({str(e)[:50]}...)，可能由于网络超时或服务繁忙。",
+                "market_direction": "未知",
                 "sectors": [],
+                "risk_warning": "请检查 LLM 服务连接或 API Key 配额。",
+                "trade_date": datetime.now().strftime("%Y%m%d"),
+                "error": str(e),
+                "raw_content": None,
             }
     
     async def recommend_stocks(self, selected_sectors: list[str], risk_preference: str = "balanced") -> dict:

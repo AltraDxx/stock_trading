@@ -258,13 +258,17 @@ async def get_realtime_market():
             # 查找主要指数（根据 AkShare 返回的实际代码和名称）
             target_indices = [
                 {'name': '上证指数', 'code': '000001', 'keyword': '上证指数'},
+                {'name': '深证成指', 'code': '399001', 'keyword': '深证成指'},
+                {'name': '创业板指', 'code': '399006', 'keyword': '创业板指'},
                 {'name': '上证50', 'code': '000016', 'keyword': '上证50'},
                 {'name': '上证180', 'code': '000010', 'keyword': '上证180'},
             ]
             
             for target in target_indices:
-                # 精确匹配代码
+                # 优先匹配名称，因为代码可能有前缀后缀差异
                 mask = index_df['代码'] == target['code']
+                if not mask.any():
+                    mask = index_df['名称'].str.contains(target['keyword'])
                 matched = index_df[mask]
                 if not matched.empty:
                     row = matched.iloc[0]
@@ -840,21 +844,14 @@ async def diagnose_portfolio(request: PortfolioRequest):
         total_market_value = sum(p.quantity * p.cost_price for p in request.positions)
         available_capital = request.total_capital - total_market_value
         
-        # 构建 Prompt
-        prompt = f"""请对以下持仓股票进行诊断，给出每只股票的操作建议：
-
-## 持仓概况
-- 总资产：{request.total_capital:,.0f} 元
-- 持仓市值：{total_market_value:,.0f} 元
-- 可用资金：{available_capital:,.0f} 元
-
-## 持仓详情
-"""
+        # 构建持仓数据字符串
+        positions_str = ""
         for stock in stock_data_list:
-            prompt += f"""
+            positions_str += f"""
 ### {stock['name']} ({stock['ts_code']})
 - 持有数量：{stock['quantity']} 股
 - 成本价：{stock['cost_price']:.2f} 元
+- 浮动盈亏: {(float(stock.get('current_price', 0)) - stock['cost_price']) / stock['cost_price'] * 100:.2f}% (若有现价)
 
 **基本面数据**
 {stock['fundamental']}
@@ -864,18 +861,20 @@ async def diagnose_portfolio(request: PortfolioRequest):
 ---
 """
         
-        prompt += """
-请为每只股票给出：
-1. **操作建议**：买入 / 持有 / 减仓 / 卖出
-2. **信号强度**：强 / 中 / 弱
-3. **具体建议**：具体操作策略（如买入多少股、设置什么止损位）
-4. **风险提示**：需要关注的风险点
-
-输出格式：Markdown，每只股票一个单独的章节。
-"""
+        # 渲染 Prompt
+        from src.ai.llm.prompts import PORTFOLIO_DIAGNOSE_TEMPLATE, render_prompt
+        
+        prompt = render_prompt(
+            PORTFOLIO_DIAGNOSE_TEMPLATE,
+            total_capital=f"{request.total_capital:,.0f}",
+            total_market_value=f"{total_market_value:,.0f}",
+            available_capital=f"{available_capital:,.0f}",
+            position_ratio=f"{total_market_value / request.total_capital * 100:.1f}%" if request.total_capital > 0 else "0%",
+            positions_data=positions_str
+        )
         
         messages = [
-            LLMMessage(role=MessageRole.SYSTEM, content=QUANT_ANALYST_ROLE),
+            LLMMessage(role=MessageRole.SYSTEM, content=PORTFOLIO_DIAGNOSE_TEMPLATE.system_prompt),
             LLMMessage(role=MessageRole.USER, content=prompt),
         ]
         

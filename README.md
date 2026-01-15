@@ -2,110 +2,70 @@
 
 Alpha Predator 是一个基于 AI 和大语言模型（LLM）的智能股票分析与交易辅助系统。它结合了传统量化指标、技术面分析、资金流向监控以及大模型的深度推理能力，旨在为投资者提供【可执行、可验证、可复盘】的交易决策支持。
 
-## ✨ 核心功能
+仓库地址: https://github.com/AltraDxx/Alpha-Predator.git
+
+## 版本更新 v1.1.0 (最新)
+
+本次更新主要集中在核心数据稳定性与 UI/UX 体验的深度打磨：
+
+- **⚡️ 极速行情源**：大盘数据源迁移至新浪财经极速接口，延迟从 >60秒 降低至 <100毫秒，秒开体验。
+- **📊 明确仓位建议**：买入建议卡片现在会明确给出**“建议买入 1000 股 / 20% 仓位”**，不再模糊。
+- **🎨 UI 视觉升级**：全面移除 Emoji，采用统一的高级 SVG 矢量图标系统，界面更加专业纯粹。
+- **🔄 智能换仓逻辑**：新增资金不足时的智能换仓建议，自动匹配并建议卖出手中表现不佳的持仓。
+- **📉 数据完整性**：修复了深证成指与创业板指在部分接口下缺失的问题。
+
+## 核心功能
 
 ### 1. 🎯 Alpha Predator 市场扫描
-全市场/自选股扫描引擎，基于多维度信号捕获交易机会：
-- **量价形态**：识别各类技术突破、底部反转形态。
-- **资金流向**：监控主力资金、北向资金的异常流动。
-- **情绪分析**：通过 LLM 生成市场情绪与策略摘要。
-- **实时监控**：在交易时间内自动刷新数据，捕捉盘中机会。
+- **多维捕捉**：识别技术形态突破、底部反转等信号。
+- **资金监控**：实时监控主力资金与北向资金流向。
+- **交易时段优化**：仅在 A 股交易时间自动刷新，捕捉盘中机会。
 
 ### 2. 🔍 Deep Dive 个股深度诊疗
-对包括持仓股在内的任意标的进行全面“体检”：
-- **六维诊断模型**：覆盖行业地位、多因子评分、技术形态、资金面、事件驱动及情景推演。
-- **结论前置**：一目了然的操作建议（买入/持有/卖出）、目标价区间及止损位。
-- **数据增强**：集成历史价格统计、公司公告、解禁信息及行业对比数据。
-- **AI 深度推理**：利用 LLM (GPT, Gemini, Qwen 等) 综合各类硬数据生成专业研报。
+- **六维模型**：覆盖行业、技术、资金、事件、情景推演与综合评分。
+- **AI 深度推理**：利用 LLM 生成包含明确买入/卖出评级的专业研报。
 
-### 3. 💼 智能持仓管理
-- **可视化持仓**：清晰展示持仓盈亏、市值分布及可用资金。
-- **自动建议**：根据用户配置的风险偏好（激进/平衡/保守）和资金规模，自动计算建议补仓/减仓数量。
-- **交易时间优化**：系统智能识别 A 股交易时间，仅在开盘期间刷新数据，极大节省资源。
+### 3. 💼 智能持仓管理可视化
+- **盈亏分布**：清晰展示持仓市值与盈亏比例。
+- **风控建议**：根据风险偏好自动计算建议的调仓比例。
 
-### 4. ⚙️ 灵活配置
-- **多数据源支持**：
-  - **Tushare** (推荐)：需配置 Token，提供更详尽的基本面数据。
-  - **AkShare** (默认)：开源免费数据源，无需账号即可使用。
-- **多 LLM 支持**：兼容 OpenAI, Google Gemini, 阿里通义千问 (Qwen) 等主流模型。
+### 4. ⚙️灵活配置
+- **多数据源**：支持 Tushare (推荐) 或 AkShare (默认/免费)。
+- **多 LLM 支持**：兼容 OpenAI, Google Gemini, 阿里通义千问 (Qwen) 等。
 
----
+## 快速开始
 
-## 🚀 快速开始
-
-### 环境依赖
-- Python 3.9+
-- Node.js 16+
-- Tushare Token (可选，推荐)
-- LLM API Key (必须，如阿里云 DashScope, OpenAI 等)
-
-### 1. 后端安装
-
+### 后端安装
 ```bash
-# 克隆项目
-git clone https://github.com/yourusername/alpha-predator.git
-cd alpha-predator
-
-# 创建并激活虚拟环境
+git clone https://github.com/AltraDxx/Alpha-Predator.git
+cd Alpha-Predator
+# 创建虚拟环境
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
+source .venv/bin/activate
 # 安装依赖
 pip install -r requirements.txt
-```
-
-### 2. 前端安装
-
-```bash
-# 进入前端目录
-cd frontend
-
-# 安装依赖
-npm install
-```
-
-### 3. 运行系统
-
-**启动后端服务**：
-```bash
-# 在项目根目录下
+# 启动服务
 uvicorn src.api.main:app --reload --port 8000
 ```
 
-**启动前端界面**：
+### 前端安装
 ```bash
-# 在 frontend 目录下
+cd frontend
+npm install
 npm run dev
 ```
 
 访问 `http://localhost:5173` 即可开始使用。
 
----
+## 架构思路
 
-## 🧠 分析思路与架构
+**数据层 (Data Layer)**：
+- 聚合 AkShare/Tushare 硬数据。
+- TechnicalIndicators 计算技术指标。
 
-本系统采用 **"数据驱动 + AI 决策"** 的双层架构：
+**决策层 (Decision Layer)**：
+- 将清洗后的数据注入 PromptTemplate。
+- 采用 CoT (思维链) 引导 LLM 进行逻辑推理。
 
-1.  **数据层 (Data Layer)**：
-    *   利用 `AkShare` 和 `Tushare` 接口采集清洗硬数据（行情、财务、新闻、资金流）。
-    *   `TechnicalIndicators` 模块计算 MACD, KDJ, RSI, MA 等技术指标。
-    *   `SignalDetector` 模块识别特定的量价形态。
-
-2.  **决策层 (Decision Layer)**：
-    *   将清洗后的结构化数据注入 `PromptTemplate`。
-    *   `Prompt Engineer` 设计的 `QUANT_ANALYST_ROLE` (量化分析师角色) 引导 LLM 进行推理。
-    *   输出遵循 CoT (Chain of Thought) 思维链，确保结论逻辑严密。
-
----
-
-## 📚 参考与致谢
-
-本项目的数据服务核心逻辑参考并使用了以下优秀的开源项目：
-
-- **[AkShare](https://github.com/akfamily/akshare)**: 主要是用于获取 A 股实时行情、历史数据及各类衍生数据。AkShare 是一个非常强大的开源财经数据接口库。
-
----
-
-## 📄 License
-
+## License
 MIT License

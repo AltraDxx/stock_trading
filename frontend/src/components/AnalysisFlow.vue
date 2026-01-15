@@ -205,38 +205,51 @@ function getDirectionClass(direction: string) {
       <button @click="errorMessage = null">✕</button>
     </div>
 
-    <!-- 步骤1: 开始分析 -->
-    <div v-if="currentStep === 1" class="step-content">
-      <div class="start-section">
-        <div class="start-icon">🎯</div>
-        <h2>智能策略分析</h2>
+    <!-- 步骤1: 初始状态 -->
+    <div v-if="currentStep === 1" class="step-content center-content">
+      <div class="welcome-section">
+        <div class="monitor-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+        </div>
+        <h3>智能策略分析</h3>
         <p>分析当前市场热门板块，智能推荐值得关注的投资方向</p>
-        
-        <!-- 风险偏好选择 -->
-        <div class="risk-preference-section">
-          <div class="risk-label">选择投资风格：</div>
-          <div class="risk-options">
-            <button
-              v-for="option in riskOptions"
-              :key="option.value"
-              class="risk-option"
-              :class="{ active: riskPreference === option.value }"
-              @click="setRiskPreference(option.value as any)"
-            >
-              <span class="risk-option-label">{{ option.label }}</span>
-              <span class="risk-option-desc">{{ option.desc }}</span>
-            </button>
+      </div>
+      
+      <div class="risk-selector">
+        <div class="section-title">选择投资风格:</div>
+        <div class="risk-options">
+          <div 
+            v-for="opt in riskOptions" 
+            :key="opt.value"
+            class="risk-card"
+            :class="{ active: riskPreference === opt.value }"
+            @click="setRiskPreference(opt.value as any)"
+          >
+            <div class="risk-icon">
+              <!-- SVG Icons based on value -->
+              <svg v-if="opt.value === 'aggressive'" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+              <svg v-else-if="opt.value === 'balanced'" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 5 7-4 7h16l-4-7 5-7H3Z"/><path d="M12 3v18"/></svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="risk-info">
+              <div class="risk-label">{{ opt.label.replace(/.\s/, '') }}</div>
+              <div class="risk-desc">{{ opt.desc }}</div>
+            </div>
           </div>
         </div>
-        
-        <button 
-          class="btn btn-primary btn-large"
-          @click="analyzeSectors"
-          :disabled="isLoading"
-        >
-          <span v-if="isLoading" class="loading-spinner"></span>
-          {{ isLoading ? '分析中...' : '🔍 开始板块分析' }}
-        </button>
+      </div>
+      
+      <button 
+        class="btn btn-primary btn-large"
+        :disabled="isLoading"
+        @click="analyzeSectors"
+      >
+        <span v-if="isLoading" class="loading-spinner"></span>
+        <span v-else>开始分析</span>
+      </button>
+      
+      <div v-if="errorMessage" class="error-message">
+        {{ errorMessage }}
       </div>
     </div>
 
@@ -245,7 +258,10 @@ function getDirectionClass(direction: string) {
       <!-- 市场总结 -->
       <div class="market-summary">
         <div class="summary-header">
-          <h3>📊 市场概况</h3>
+          <h3>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            市场概况
+          </h3>
           <span 
             class="direction-badge" 
             :class="getDirectionClass(sectorAnalysis.market_direction)"
@@ -258,13 +274,16 @@ function getDirectionClass(direction: string) {
 
       <!-- 板块列表 -->
       <div class="section-header">
-        <h3>🔥 热门板块</h3>
+        <h3>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+          热门板块
+        </h3>
         <span class="selected-count">
           已选择 {{ selectedSectors.size }} 个板块
         </span>
       </div>
       
-      <div class="sector-grid">
+      <div class="sector-grid" v-if="sectorAnalysis.sectors.length > 0">
         <SectorCard
           v-for="sector in sectorAnalysis.sectors"
           :key="sector.name"
@@ -272,6 +291,10 @@ function getDirectionClass(direction: string) {
           :selected="selectedSectors.has(sector.name)"
           @toggle="toggleSector(sector.name)"
         />
+      </div>
+      <div v-else class="empty-sectors">
+        <p>⚠️ 暂无板块数据或分析失败</p>
+        <p class="sub-text">请稍后重试，或检查 API 服务状态</p>
       </div>
 
       <!-- 操作按钮 -->
@@ -593,6 +616,27 @@ function getDirectionClass(direction: string) {
   margin-bottom: 24px;
 }
 
+.empty-sectors {
+  text-align: center;
+  padding: 40px;
+  background: var(--bg-tertiary, #2a2a3e);
+  border-radius: 12px;
+  margin-bottom: 24px;
+  border: 1px dashed var(--border-color, #444);
+}
+
+.empty-sectors p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--warning, #fbbf24);
+}
+
+.empty-sectors .sub-text {
+  font-size: 0.85rem;
+  color: var(--text-muted, #888);
+  margin-top: 8px;
+}
+
 /* 股票列表 */
 .analysis-summary {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), transparent);
@@ -704,17 +748,122 @@ function getDirectionClass(direction: string) {
 
 /* 加载动画 */
 .loading-spinner {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
   border-radius: 50%;
+  border-top-color: white;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
+}
+
+/* New SVG UI Styles */
+.center-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 40px 0;
+}
+
+.welcome-section {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.monitor-icon {
+  color: var(--primary-color, #8b5cf6);
+  opacity: 0.8;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.risk-selector {
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: 40px;
+}
+
+.risk-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.section-title {
+  margin-bottom: 16px;
+  font-size: 1rem;
+  color: var(--text-muted, #888);
+  text-align: center;
+}
+
+.risk-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--bg-tertiary, #1e1e2e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.risk-card:hover {
+  background: var(--bg-hover, #2a2a3e);
+  transform: translateY(-2px);
+}
+
+.risk-card.active {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: var(--primary-color, #8b5cf6);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+.risk-icon {
+  color: var(--text-muted, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.risk-card.active .risk-icon {
+  color: var(--primary-color, #8b5cf6);
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.risk-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.risk-label {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-primary, #fff);
+}
+
+.risk-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted, #888);
+}
+
+.header-icon {
+  margin-right: 8px;
+  vertical-align: text-bottom;
+  color: var(--primary-color, #8b5cf6);
+  opacity: 0.8;
 }
 </style>

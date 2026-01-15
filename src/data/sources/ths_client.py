@@ -7,6 +7,7 @@
 from datetime import datetime, date
 from typing import Optional
 
+import requests
 import pandas as pd
 from loguru import logger
 
@@ -27,6 +28,67 @@ class THSClient:
             logger.error("AkShare 未安装，请运行: pip install akshare")
             raise
     
+    def get_index_spot_fast(self) -> pd.DataFrame:
+        """从新浪财经获取极速指数行情 (替代 AkShare 慢速接口)"""
+        try:
+            # 关注的指数代码: 上证, 深证, 创业板, 上证50, 沪深300, 中证500
+            symbols = ['sh000001', 'sz399001', 'sz399006', 'sh000016', 'sh000300', 'sh000905']
+            url = f"http://hq.sinajs.cn/list={','.join(symbols)}"
+            
+            headers = {'Referer': 'https://finance.sina.com.cn/'}
+            resp = requests.get(url, headers=headers, timeout=5)
+            text = resp.text
+            
+            data = []
+            for line in text.splitlines():
+                if not line.strip(): continue
+                # Parse: var hq_str_sh000001="上证指数,3086.0463,...";
+                try:
+                    left, right = line.split('="')
+                    symbol = left.split('_')[-1] # sh000001
+                    content = right.strip('";')
+                    parts = content.split(',')
+                    
+                    if len(parts) > 10:
+                        # 0:名称, 1:开盘, 2:昨收, 3:最新, 4:最高, 5:最低, 8:成交量, 9:成交额
+                        name = parts[0]
+                        price = float(parts[3])
+                        pre_close = float(parts[2])
+                        open_p = float(parts[1])
+                        low = float(parts[5])
+                        high = float(parts[4])
+                        # 涨跌幅
+                        change = price - pre_close
+                        pct = (change / pre_close) * 100 if pre_close > 0 else 0
+                        
+                        vol = float(parts[8])
+                        amt = float(parts[9])
+                        
+                        data.append({
+                            '代码': symbol[2:], # 去掉 sh/sz
+                            '名称': name,
+                            '最新价': price,
+                            '涨跌额': change,
+                            '涨跌幅': pct,
+                            '成交量': vol,
+                            '成交额': amt,
+                            '昨收': pre_close,
+                            '今开': open_p,
+                            '最高': high,
+                            '最低': low
+                        })
+                except Exception as ex:
+                    continue
+                    
+            if not data:
+                return pd.DataFrame()
+                
+            return pd.DataFrame(data)
+
+        except Exception as e:
+            logger.error(f"Sina极速行情获取失败: {e}")
+            return pd.DataFrame()
+
     def get_realtime_quote(self, ts_code: str) -> Optional[dict]:
         """获取实时行情
         
@@ -283,14 +345,8 @@ class THSClient:
         Returns:
             指数行情 DataFrame
         """
-        try:
-            # 获取所有 A 股指数实时行情
-            df = self.ak.stock_zh_index_spot_em()
-            logger.info(f"获取指数行情: {len(df)} 条")
-            return df
-        except Exception as e:
-            logger.error(f"获取指数行情失败: {e}")
-            return pd.DataFrame()
+        # 使用极速版接口，避免 akshare 遍历所有分页导致超时
+        return self.get_index_spot_fast()
 
     def get_sector_index(self) -> pd.DataFrame:
         """获取行业板块行情
